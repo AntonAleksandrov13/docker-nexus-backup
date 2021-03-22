@@ -33,37 +33,27 @@ function backup {
     sleep "${GRACE_PERIOD}"
 
     echo "==> Attempting to backup the 'default' blobstore."
-    echo "==> Running tar -czf temp.tar ${NEXUS_DATA_DIRECTORY}/blobs/default/"
-    tar -czf temp_blob.tar "/nexus-data/blobs/default/"
-    echo "==> rclone copy temp_blob.tar ${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar -vv"
-    rclone copy temp.tar "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar" -vv
+    echo "==> Creating revision dir with timestamp ${TIMESTAMP}"
+    mkdir backup
+    mkdir backup/${TIMESTAMP}
+    echo "==> Running: tar -czf ./backup/${TIMESTAMP}/blobstore.tar ${NEXUS_DATA_DIRECTORY}/blobs/default/"
+    tar -czf ./backup/${TIMESTAMP}/blobstore.tar ${NEXUS_DATA_DIRECTORY}/blobs/default/
 
-    local EXIT_CODE_1=$?
-
-    if [ ${EXIT_CODE_1} -ne 0 ]; then
-        echo "(!) Couldn't backup the blobstore. Manual intervention is advised."
-    else
-        echo "(✓) Blobstore successfully backed-up."
-    fi
 
     echo "==> Attempting to backup the Nexus databases."
     #tar c "${NEXUS_BACKUP_DIRECTORY}/" | rclone rcat "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/databases.tar" --streaming-upload-cutoff ${STREAMING_UPLOAD_CUTOFF}
-    echo "==> Running tar -czf temp_db.tar ${NEXUS_BACKUP_DIRECTORY}/"
-    tar -czf temp_db.tar "${NEXUS_BACKUP_DIRECTORY}/"
-    echo "==> rclone copy temp_db.tar ${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar -vv"
-    rclone copy temp_db.tar "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/databases.tar" -vv
+    echo "==> Running: tar -czf ./backup/${TIMESTAMP}/databases.tar ${NEXUS_BACKUP_DIRECTORY}/"
+    tar -czf ./backup/${TIMESTAMP}/databases.tar ${NEXUS_BACKUP_DIRECTORY}/
 
-    local EXIT_CODE_2=$?
+    echo "==> Running: rclone copy ./backup ${RCLONE_REMOTE}:${TARGET_BUCKET} -vv"
+    rclone copy ./ ${RCLONE_REMOTE}:${TARGET_BUCKET} -vv
+    echo "(✓) Backup files are uploaded."
 
-    if [ ${EXIT_CODE_2} -ne 0 ]; then
-        echo "(!) Couldn't backup the databases. Manual intervention is advised."
-    else
-        find "${NEXUS_BACKUP_DIRECTORY}" -name "*.bak" -exec rm {} \; # Cleanup leftovers so that they don't get picked up next time.
-        echo "(✓) Databases successfully backed-up."
-        echo "==> Cleaning archieves..."
-        rm *.tar
-        echo "(✓) Clean up done."
-    fi
+    find ${NEXUS_BACKUP_DIRECTORY} -name *.bak -exec rm {} \; # Cleanup leftovers so that they don't get picked up next time.
+    rm -r ${NEXUS_DATA_DIRECTORY}/backup/.backup
+    echo "==> Cleaning archieves..."
+    echo "(✓) Clean up done."
+
 
     echo "==> Attempting to start repositories."
     manage_repos start

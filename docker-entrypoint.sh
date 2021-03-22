@@ -33,7 +33,10 @@ function backup {
     sleep "${GRACE_PERIOD}"
 
     echo "==> Attempting to backup the 'default' blobstore."
-    tar c "${NEXUS_DATA_DIRECTORY}/blobs/default/" | rclone rcat "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar" --streaming-upload-cutoff ${STREAMING_UPLOAD_CUTOFF}
+    echo "==> Running tar -czf temp.tar ${NEXUS_DATA_DIRECTORY}/blobs/default/"
+    tar -czf temp_blob.tar "/nexus-data/blobs/default/"
+    echo "==> rclone copy temp_blob.tar ${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar -vv"
+    rclone copy temp.tar "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar" -vv
 
     local EXIT_CODE_1=$?
 
@@ -44,7 +47,11 @@ function backup {
     fi
 
     echo "==> Attempting to backup the Nexus databases."
-    tar c "${NEXUS_BACKUP_DIRECTORY}/" | rclone rcat "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/databases.tar" --streaming-upload-cutoff ${STREAMING_UPLOAD_CUTOFF}
+    #tar c "${NEXUS_BACKUP_DIRECTORY}/" | rclone rcat "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/databases.tar" --streaming-upload-cutoff ${STREAMING_UPLOAD_CUTOFF}
+    echo "==> Running tar -czf temp_db.tar ${NEXUS_BACKUP_DIRECTORY}/"
+    tar -czf temp_db.tar "${NEXUS_BACKUP_DIRECTORY}/"
+    echo "==> rclone copy temp_db.tar ${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/blobstore.tar -vv"
+    rclone copy temp_db.tar "${RCLONE_REMOTE}:${TARGET_BUCKET}/${TIMESTAMP}/databases.tar" -vv
 
     local EXIT_CODE_2=$?
 
@@ -53,6 +60,9 @@ function backup {
     else
         find "${NEXUS_BACKUP_DIRECTORY}" -name "*.bak" -exec rm {} \; # Cleanup leftovers so that they don't get picked up next time.
         echo "(✓) Databases successfully backed-up."
+        echo "==> Cleaning archieves..."
+        rm *.tar
+        echo "(✓) Clean up done."
     fi
 
     echo "==> Attempting to start repositories."
@@ -73,33 +83,33 @@ function ensure_groovy_script {
 
     # Delete any previously existing script.
     curl -H "Authorization: ${NEXUS_AUTHORIZATION}" \
-      -o /dev/null \
-      -s \
-      -w "${http_code}" \
-      -X DELETE \
-      "${NEXUS_LOCAL_HOST_PORT}/service/rest/v1/script/${NAME}/"
+    -o /dev/null \
+    -s \
+    -w "${http_code}" \
+    -X DELETE \
+    "${NEXUS_LOCAL_HOST_PORT}/service/rest/v1/script/${NAME}/"
 
     # Install the script.
     curl -d "{\"name\":\"${NAME}\",\"type\":\"groovy\",\"content\":\"${BODY}\"}" \
-      -H "Authorization: ${NEXUS_AUTHORIZATION}" \
-      -H 'Content-Type: application/json' \
-      -s \
-      -S \
-      -X POST \
-      "${NEXUS_LOCAL_HOST_PORT}/service/rest/v1/script/"
+    -H "Authorization: ${NEXUS_AUTHORIZATION}" \
+    -H 'Content-Type: application/json' \
+    -s \
+    -S \
+    -X POST \
+    "${NEXUS_LOCAL_HOST_PORT}/service/rest/v1/script/"
 }
 
 function manage_repos { # Supported actions are 'start' and 'stop'.
     local REPOS=($OFFLINE_REPOS)
-    
+
     for repo in "${REPOS[@]}";
     do
-       curl -d "${repo}" \
-            -H "Authorization: ${NEXUS_AUTHORIZATION}" \
-            -H "Content-Type: text/plain" \
-            -s \
-            -X POST \
-            "${NEXUS_LOCAL_HOST_PORT}/service/rest/v1/script/${1}-repository/run" > /dev/null
+        curl -d "${repo}" \
+        -H "Authorization: ${NEXUS_AUTHORIZATION}" \
+        -H "Content-Type: text/plain" \
+        -s \
+        -X POST \
+        "${NEXUS_LOCAL_HOST_PORT}/service/rest/v1/script/${1}-repository/run" > /dev/null
     done
 }
 
